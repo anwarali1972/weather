@@ -68,18 +68,19 @@ func startServer(wg *sync.WaitGroup) {
 
 func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Getting current weather")
-	lat, ok := r.URL.Query()["lat"]
-	if !ok {
-		log.Println("lat is a required parameter")
+	requiredFunc := func(s string) {
+		log.Println(s)
 		w.WriteHeader(412)
 		fmt.Fprintln(w, "required parameter is missing")
+	}
+	lat, ok := r.URL.Query()["lat"]
+	if !ok {
+		requiredFunc("lat is a required parameter")
 		return
 	}
 	long, ok := r.URL.Query()["long"]
 	if !ok {
-		log.Println("long is a required parameter")
-		w.WriteHeader(412)
-		fmt.Fprintln(w, "required parameter is missing")
+		requiredFunc("long is a required parameter")
 		return
 	}
 	log.Println("lat:", lat[0], "long:", long[0])
@@ -101,7 +102,7 @@ func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 	q.Add("exclude", "minutely,hourly,daily")
 
 	req.URL.RawQuery = q.Encode()
-	log.Println(req.URL.String())
+	log.Println(req.URL.RawQuery)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -117,7 +118,7 @@ func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		w.WriteHeader(resp.StatusCode)
+		w.WriteHeader(500)
 		fmt.Fprintln(w, "Error reading response")
 		return
 	}
@@ -126,13 +127,15 @@ func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 	var currWeather CurrentWeatherInfo
 
 	if err = json.Unmarshal(body, &currWeather); err != nil {
-		log.Println("Error unmarshaling", err)
+		w.WriteHeader(500)
+		fmt.Fprintln(w, "Error unmarshalling response")
 		return
 	}
 
 	jsonStr, err := json.Marshal(currWeather)
 	if err != nil {
-		log.Println("Error marshaling", err)
+		w.WriteHeader(500)
+		fmt.Fprintln(w, "Error marshelling current weather")
 		return
 	}
 	log.Println(string(jsonStr))
@@ -143,7 +146,7 @@ func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 	}
 	tempType := getTempType(currWeather.Current.Temp)
 	currWeatherResult.Type = tempType
-	if len(currWeather.Alerts) >= 0 {
+	if len(currWeather.Alerts) > 0 {
 		currWeatherResult.Alerts = make([]AlertsType, len(currWeather.Alerts))
 		copy(currWeatherResult.Alerts, currWeather.Alerts)
 	}
